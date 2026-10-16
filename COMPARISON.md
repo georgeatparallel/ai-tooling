@@ -965,7 +965,7 @@ All 1116 tools from CATALOG.md with dev loop stage, automation capability, prici
 | RAGFlow | platform | ✓ | ✓ | SKIP | REVIEW |
 | engram | tool | | ✓ | discovery-log | REVIEW |
 | ballast | plugin | ✓ | ✓ | discovery-log | SOURCE-ONLY |
-| mem0 | MCP server | | ✓ | discovery-log | REVIEW |
+| mem0 | MCP server | | ✓ | discovery-log | MEASURED |
 | ReMe | platform | | ✓ | discovery-log | SOURCE-ONLY |
 | loci | MCP server | | ✓ | discovery-log | SOURCE-ONLY |
 | memoket-kite | tool | | ✓ | discovery-log | SOURCE-ONLY |

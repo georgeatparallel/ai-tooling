@@ -1,9 +1,9 @@
 # Evaluation: mem0
 
 **Repo:** [mem0ai/mem0](https://github.com/mem0ai/mem0)
-**Stars:** 58,871 | **Last updated:** 2026-06-18 | **License:** Apache-2.0
-**Last verified:** 2026-06-22  <!-- backfilled from last git edit; not a hands-on re-check -->
-**Last triaged:** 2026-09-28  <!-- triaged: bulk -->
+**Stars:** 62,549 | **Last updated:** 2026-08-05 | **License:** Apache-2.0
+**Last verified:** 2026-10-16
+**Last triaged:** 2026-10-16  <!-- triaged: bulk -->
 **Dev loop stage:** Reflect
 **Layer:** Infrastructure
 
@@ -19,51 +19,64 @@ MCP server integration is community-maintained: `coleam00/mcp-mem0` (678 stars) 
 
 ## How we tested it
 
-**Evidence:** REVIEW
+**Evidence:** MEASURED
 
-Architecture-review evaluation based on:
-1. Existing detailed comparison at `evaluations/mem0-vs-claude-mem.md` covering head-to-head benchmarks, feature matrices, and use-case mapping
-2. Inspection of the official Claude Code plugin (marketplace.json v0.2.10) and 6 bundled skills (`mem0-cli`, `mem0-integrate`, `mem0-oss-to-platform`, `mem0-test-integration`, `mem0-vercel-ai-sdk`, `mem0`)
-3. Survey of 5 community MCP server implementations (678 stars to 8 stars)
-4. Repo health metrics: 58.8K stars, 6.7K forks, 339 open issues, 3 years old, updated today
+**Hands-on, measured.** Installed it with `pip install mem0ai` (v2.2.1) in a clean venv, wired it to a local embedder (`fastembed`, `BAAI/bge-small-en-v1.5`) and an on-disk local Qdrant store, loaded a 30-memory fixture with `add(..., infer=False)`, and scored 24 natural-language queries against a hand-labelled gold memory, against a keyword-overlap baseline. Scope is the **storage and vector-retrieval path only**; the LLM extraction pipeline and the published benchmark algorithm are outside this run (see "What didn't work").
 
-```bash
-gh api repos/mem0ai/mem0 --jq '.description, .stargazers_count, .updated_at'
-gh api repos/mem0ai/mem0/contents/.claude-plugin/marketplace.json --jq '.content' | base64 -d
-gh api search/repositories -f q='mem0 mcp server' -f sort=stars --jq '.items[] | .full_name, .stargazers_count'
 ```
+$ python run.py     # /tmp/eval-mem0, mem0ai 2.2.1, fastembed bge-small, qdrant local
+init_s 0.88
+add_total_s 0.57 for 30 (19 ms each)
+all n=24 mem0 hit@1 19 hit@3 23 | keyword hit@1 16 hit@3 19
+lex n=7 mem0 hit@1 6 hit@3 7 | keyword hit@1 5 hit@3 6
+para n=17 mem0 hit@1 13 hit@3 16 | keyword hit@1 11 hit@3 13
+search latency ms median 6 max 16
+other-user results: 0
+dup add: before 30 after 31
+after update top: The payments service is written in Go and deployed on Kubernetes in the eu-west-1 region.
+after delete count 30
+infer=True add FAIL: LLMError LLM extraction failed: Error code: 401 - {'error': {'message': 'Incorrect API key provided: placehol************lled. You can find your API key at htt
+```
+
+Second full run reproduced the same hit counts (19/23 vs 16/19); latency median 6 ms, max 9 ms.
+
+## Test design
+
+- **Task/corpus:** 30 short project-knowledge memories (stack choices, policies, owners, SLOs) and 24 queries with one gold memory each: 7 share key words with the gold memory ("lex"), 17 are paraphrases with little word overlap ("para"). Fixture and queries are in the run script, built under `/tmp/eval-mem0/` (not committed).
+- **Baseline:** keyword retrieval, Jaccard overlap of lowercased, stop-word-filtered tokens between query and memory (the "without a semantic memory layer" arm, i.e. what `grep`-style recall gives).
+- **Metric:** hit@1 and hit@3 (gold memory is the top result / in the top three), search latency per query, plus mechanical behaviour checks (user isolation, delete, duplicate handling).
+- **Reproduce:** `python -m venv v && v/bin/pip install mem0ai fastembed`, then build `Memory.from_config` with `embedder=fastembed`, `vector_store=qdrant (path=...)`, an `llm` block holding a throwaway placeholder key (constructor requires one; it is never called with `infer=False`), `add(text, user_id="u1", infer=False)` for each memory, and `search(q, filters={"user_id": "u1"}, top_k=3)` per query.
 
 ## What worked
 
-- **Published, reproducible benchmarks** — 91.6 LoCoMo and 94.8 LongMemEval are the only hard retrieval numbers in the memory tool ecosystem; no other catalog entry has comparable evidence
-- **Entity linking** — connects people, code, and concepts across memories for retrieval boosting; genuinely useful for large memory stores where flat search degrades
-- **Temporal reasoning** — time-aware retrieval distinguishes past vs present state, which flat memory systems conflate
-- **Multi-platform** — Python SDK, Node SDK, REST API, browser extension, Claude Code plugin, MCP servers; the only memory tool that works across Claude Code, Codex, Cursor, and custom agents simultaneously
-- **Official Claude Code plugin** — v0.2.10 ships in-repo with 6 skills, not just community-maintained
+- **Retrieval beat the keyword baseline on this fixture:** hit@1 19/24 vs 16/24, hit@3 23/24 vs 19/24. The gap is in paraphrase queries (hit@3 16/17 vs 13/17); on key-word-sharing queries both do well (7/7 vs 6/7 at hit@3).
+- **Fast and fully local at this scale:** about 15-19 ms per `add` and a 6 ms median search with a local embedder and local Qdrant; no server or network once the embedding model is cached.
+- **Per-user scoping is real:** a search under another `user_id` returned 0 results; `delete` reduced the stored count 31 to 30 as expected.
+- **Config surface is wide:** the embedder/vector-store provider layer accepted a non-default local embedder and local vector store through plain config.
 
 ## What didn't work or surprised us
 
-- **No auto-capture** — requires explicit `mem0 add` calls; unlike claude-mem which passively captures via hooks, mem0 depends on the agent being instructed to save memories
-- **MCP servers are community-maintained** — the official repo ships a plugin but the MCP path (`coleam00/mcp-mem0`) is a third-party project, adding integration risk
-- **339 open issues** suggests rapid growth outpacing support capacity
-- **Richest features require cloud or Docker** — dashboard, auth, advanced retrieval need the platform or self-hosted Docker; the plugin alone is a subset
-- **No bundled workflow skills** — claude-mem ships 18+ skills (make-plan, learn-codebase, pathfinder, weekly-digests); mem0 is memory-only
+- **The headline pipeline needs an LLM.** `Memory()` with no config fails at construction (`OpenAIError: Missing credentials`), and constructing it with any config still builds an LLM client, so a placeholder key was needed even for `infer=False`. `add()` with default inference failed with `LLMError ... 401 Incorrect API key`. Entity linking, temporal reasoning and dedup are all behind that path, so none of them were exercised here.
+- **The published numbers (91.6 LoCoMo, 94.8 LongMemEval) are unverified by this run.** Our result reflects bge-small embeddings plus a vector store, so it says little about mem0's own fusion (semantic + BM25 + entity) algorithm.
+- **No dedup without the LLM:** adding the same memory twice with `infer=False` stored both (30 to 31).
+- **Update check was confounded** by that duplicate: after `update()` on one copy, the other copy still ranked first, so the update result is inconclusive rather than a bug.
+- **Small fixture:** 24 queries over 30 memories is a smoke-scale measurement. The delta is directional, and a different embedder under the baseline harness would likely show a similar gain, so it is weak evidence for mem0 specifically.
+- **Argument shape changed:** `search`/`get_all` reject top-level `user_id` in 2.2.1 and require `filters={...}`; older examples (including many community MCP wrappers) pass the old form.
 
 ## Quality signals affected
 
 | Signal | Impact | Evidence |
 |--------|--------|----------|
-| Correctness | + | Published benchmarks (91.6 LoCoMo, 94.8 LongMemEval) demonstrate superior retrieval accuracy vs unscored alternatives |
-| Speed | + | Entity linking and temporal reasoning reduce irrelevant recall, faster convergence on correct context |
+| Correctness | + | Measured: hit@1 19/24 and hit@3 23/24 vs keyword baseline 16/24 and 19/24 on a disclosed 24-query fixture (vector path only); published LoCoMo/LongMemEval numbers unverified here |
+| Speed | + | Measured: 6 ms median search, 15-19 ms per add with local embedder and local Qdrant |
 | Maintainability | neutral | Memory is infrastructure, not code quality; no direct impact |
 | Safety | neutral | Apache-2.0, self-hostable; cloud path adds vendor dependency |
-| Cost Efficiency | - | Cloud platform has costs beyond free tier; self-hosted requires Docker + Qdrant + Neo4j |
+| Cost Efficiency | - | Local embedder + local Qdrant ran at zero marginal cost, but the LLM-inference path needs a paid key; cloud platform costs beyond free tier |
+| Verifiability | neutral | Retrieval hits are checkable against stored memory text (every result returns the verbatim memory); extracted memories from `infer=True` were not observed, so their faithfulness is unchecked |
 
 ## Verdict
 
-**discovery-log — tentative read**
-
-Use mem0 when you need memory that works across multiple AI editors (Claude Code + Codex + Cursor), when your memory store exceeds ~5K entries and needs entity linking for retrieval quality, or when you need publishable retrieval benchmarks to justify the tool to stakeholders. For Claude Code-only workflows, claude-mem (ADOPT) remains the better choice: zero-friction install, auto-capture via hooks, and 18+ bundled workflow skills. Do not run both simultaneously.
+**discovery-log — tentative read** — the local retrieval path works and beat keyword recall (hit@3 23/24 vs 19/24, 24-query fixture), but mem0's differentiators (LLM extraction, entity linking, temporal reasoning, dedup, published benchmarks) need an LLM key this run could not use, so the claim that matters is untested. For Claude Code-only workflows claude-mem (ADOPT) stays the better choice; mem0's case is cross-editor memory. A real read needs a keyed run of `infer=True` against a fixed conversation set.
 
 ## Triage note
 
