@@ -25,7 +25,7 @@ _human or `eval-runner` only — the one band that may reach ADOPT._
 |------|-------|-------|-----|---------|
 | vet | Review | 63.6 | pressure 28, gap 7.6 | `/evaluate-tool vet` |
 | cognee | Memory & Context | 54.8 | pressure 24, gap 6.8 | `/evaluate-tool cognee` |
-| orca | Implement | 52.1 | pressure 22, gap 6.1 | `/evaluate-tool orca` |
+| orca | Implement | 50.1 | pressure 22, gap 6.1 | `/evaluate-tool orca` |
 | langfuse | Outer Loop | 45.9 | pressure 19, gap 7.9 | `/evaluate-tool langfuse` |
 | mem0 | Memory & Context | 44.8 | pressure 18, gap 6.8 | `/evaluate-tool mem0` |
 | claude-octopus | Review | 41.6 | pressure 16, gap 7.6 | `/evaluate-tool claude-octopus` |

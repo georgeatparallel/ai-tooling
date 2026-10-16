@@ -157,7 +157,7 @@ All 1116 tools from CATALOG.md with dev loop stage, automation capability, prici
 | claude-squad | tool | | ✓ | CONDITIONAL | RUN |
 | mast | plugin | ✓ | ✓ | discovery-log | SOURCE-ONLY |
 | vibe-kanban | tool | | ✓ | discovery-log | SOURCE-ONLY |
-| orca | platform | ✓ | ✓ | discovery-log | REVIEW |
+| orca | platform | ✓ | ✓ | discovery-log | RUN |
 | agentbox | tool | ✓ | ✓ | discovery-log | SOURCE-ONLY |
 | codex-mobile-bridge | tool | ✓ | ✓ | discovery-log | SOURCE-ONLY |
 | groundcrew | tool | ✓ | ✓ | discovery-log | SOURCE-ONLY |
