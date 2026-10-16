@@ -1,9 +1,9 @@
 # Evaluation: claude-octopus
 
 **Repo:** [nyldn/claude-octopus](https://github.com/nyldn/claude-octopus)
-**Stars:** 3,646 | **Last updated:** 2026-06-18 | **License:** MIT
-**Last verified:** 2026-06-22  <!-- backfilled from last git edit; not a hands-on re-check -->
-**Last triaged:** 2026-08-04  <!-- triaged: bulk -->
+**Stars:** 3,926 | **Last updated:** 2026-08-05 | **License:** MIT
+**Last verified:** 2026-10-16
+**Last triaged:** 2026-10-16  <!-- triaged: bulk -->
 **Dev loop stage:** Plan + Review (primary) — also spans Implement/Verify/Ship via lifecycle commands
 **Layer:** Tooling
 
@@ -19,56 +19,66 @@ The consensus is not theater-by-prompt. `council.md` mandates that the command s
 
 ## How we tested it
 
-**Evidence:** REVIEW
+**Evidence:** RUN
 
-Source-and-docs review against the GitHub repo — **not** a hands-on installed run, and no models were actually dispatched. Installing octo mutates `~/.claude` (49 commands, 32 agents, 54 skills, a broad set of lifecycle hooks) and the differentiated multi-model path requires multiple external provider CLIs and their paid subscriptions/API keys to exercise honestly; running it just to evaluate would be both invasive and costly. No consensus results, provider outputs, or benchmark numbers below are invented — the verdict rests on the manifest, the command runner contract, the documented gate mechanics, and the maturity signals. I read the README, `.claude-plugin/plugin.json`, `.claude/commands/council.md`, and the file tree, and queried repo metadata.
+**Hands-on** — cloned `nyldn/claude-octopus` at `04b24c6` (plugin manifest v11.14.0, 2026-10-15) into a scratch directory in a cloud sandbox with `HOME` redirected, then ran the plugin's own smoke and unit suites, `claude plugin validate`, and the provider-detection and council entry points. The sandbox holds Claude Code only (no Codex, Gemini, Copilot, Ollama or other provider CLI, and no model credentials), so every number below describes the Claude-only path.
 
 ```bash
-gh api repos/nyldn/claude-octopus --jq '{stars:.stargazers_count,license:.license.spdx_id,description:.description,pushed_at,created_at,forks:.forks_count,open_issues:.open_issues_count}'
-gh api repos/nyldn/claude-octopus/readme --jq '.content' | base64 -d
-gh api "repos/nyldn/claude-octopus/git/trees/HEAD?recursive=1" --jq '.tree[].path'
-gh api repos/nyldn/claude-octopus/contents/.claude-plugin/plugin.json --jq '.content' | base64 -d
-gh api repos/nyldn/claude-octopus/contents/.claude/commands/council.md --jq '.content' | base64 -d
-gh api repos/nyldn/claude-octopus/releases --paginate --jq '.[].tag_name' | wc -l   # 242
-gh api repos/nyldn/claude-octopus/contributors --paginate --jq '.[].login' | wc -l   # 15
+git clone --depth 1 https://github.com/nyldn/claude-octopus && cd claude-octopus
+claude plugin validate .                    # Validation passed with warnings (56 lines: 42 unquoted ${CLAUDE_PLUGIN_ROOT} hook commands, 14 other)
+./tests/run-all.sh smoke                    # Total 16 / Passed 16 / Failed 0, 1m27s
+./tests/run-all.sh unit                     # stopped after ~13 min: 50 PASS, 2 FAIL of 408 suites reached
+HOME=$scratch ./scripts/orchestrate.sh detect-providers   # 5.9s; CLAUDE_STATUS=ok, all 22 other providers not-installed (CLAUDE_SDK/ANTHROPIC_API unauthenticated)
+HOME=$scratch ./scripts/orchestrate.sh council "Should we use a global mutable cache in a request handler?"   # killed by `timeout 120` and again by `timeout 100`, output ends at "Project policy: no project policy source found"
+HOME=$scratch ./scripts/orchestrate.sh --dry-run debate "tabs vs spaces"   # ERROR: AI Debate Hub not found, run git submodule update --init --recursive
+find commands -name '*.md' | wc -l          # 54
+find skills -name SKILL.md | wc -l          # 63
+ls agents/personas | wc -l                  # 31
 ```
+
+## Test design
+
+- **Task/corpus:** the repository's own test suites at `04b24c6` (16 smoke, 408 unit) plus four entry-point invocations on a machine with Claude as the only provider. The planned cross-model comparison (council or review on a planted-defect file against a single-model baseline) needs at least one non-Claude provider with credentials, which this sandbox lacks, so no defect-catch rate is reported.
+- **Baseline:** none. This is a single-arm run of the plugin's own checks and entry points; it measures whether the install is sound, not whether consensus beats one model.
+- **Metric:** suites passed/failed, wall-clock seconds, exit behaviour of each command.
+- **Reproduce:** the commands in the block above; `apt-get install rsync gawk` was done in the sandbox before the council retry (mawk, the default awk, printed `REcompile() - panic` on a `{0,3}` regex in the first council run).
+
+### Test design — skills (required when Type is skill or plugin)
+
+- **Triggering:** not measured. Skill triggering needs a live model session, and the sandbox has none. The 63 skills and 54 commands register (smoke `test-packaging-integrity.sh` and `test-help-commands.sh` pass), which shows they load, not that they fire on the right prompts.
+- **Output A/B:** not measured, for the same reason; the with/without comparison needs a model on both arms.
 
 ## What worked
 
-- **Real multi-model dispatch, not prompted persona role-play.** The council command's "MANDATORY COMPLIANCE" block forces a shell runner (`orchestrate.sh`) and *prohibits* single-model simulation unless explicitly requested and labeled. This is the single most important integrity detail: the blindspot claim depends on genuinely independent models, and the design enforces it rather than faking it with one Claude wearing hats.
-- **Genuine consensus/veto machinery.** Documented 75% consensus gate, quorum + critical-veto gates in council mode, and an agent status ledger (`octopus agent-summary`) showing which providers contributed vs. ran degraded vs. failed. Disagreement is surfaced, not averaged away — which is the actual value of cross-model review.
-- **Native Claude Code plugin with the rewarded surface area.** Marketplace install, 49 `/octo:*` commands, 32 personas, 54 skills, lifecycle hooks. It lives *inside* the dev loop (Plan/Review especially), which is exactly what this catalog credits.
-- **Cost is treated as a first-class constraint.** `--max-cost <usd>`, cost preflight, a `/octo:costs` command, provider-aware prompt preflight to avoid silent oversize failures, `--depth quick|standard|deep`, `--members 3|5|7`, and per-session provider disable (`/octo:model-config disable codex --session`). Five providers cost nothing extra when you already hold the subscriptions; Ollama is free/local.
-- **Strong maintenance signals.** v9.45.0, 242 tagged releases, 117 test suites passing, active CI, tracks Claude Code feature flags through v2.1.157 (Opus 4.8). Honest "Trust, Safety, and Limits" section documents hook scope, data locations (`~/.claude-octopus/`, `.octo/`), provider transparency markers, and clean uninstall.
-- **Claude-only graceful degradation.** Zero external providers required to install; multi-AI features simply activate as providers are auto-detected. Workflows continue if a provider times out. This makes the *commitment* soft even though the *value* needs providers.
+- **Structurally sound package.** `claude plugin validate .` passes, and all 16 smoke suites pass (packaging integrity, syntax of every script, safety hooks, dry-run of all commands, council and costs command contracts) in 87 seconds.
+- **Provider detection is fast and honest.** `detect-providers` finished in 5.9 s and reported 23 providers with a status each; on this machine Claude was `ok` and the other 22 `not-installed`, with no false positives and the SDK and API routes correctly marked `unauthenticated`.
+- **Large hermetic test investment.** 408 unit suites plus smoke, integration and live tiers; the live tier is separated so `make test` never spends money. Of the 52 unit suites that completed before the run was stopped, 50 passed.
+- **Surface matches the earlier review.** 54 commands, 63 skills and 31 personas on disk, consistent with the manifest and the catalog description; the plugin is now at v11.14.0, well past the v9.45 the earlier review read.
 
 ## What didn't work or surprised us
 
-- **The headline value (multi-model blindspot catching) requires multiple paid subscriptions or API keys to actually realize.** With Claude only, you get personas/workflows/skills — i.e., a heavier prompt-scaffolding layer, *not* the cross-model consensus that justifies the tool. To get the differentiated benefit you must wire up Codex/Gemini/etc., each of which either consumes a subscription or bills per token. Running 5–9 models on every task is the explicit design, and that is a real, recurring cost multiplier the catalog one-liner ("vs Cost which it clearly raises") correctly flags.
-- **No published benchmark that cross-model consensus beats single-model review.** "117 suites passing" tests the plugin's own code, not whether a 75% gate across 9 models catches more real bugs than one good Claude pass. The blindspot premise is plausible and the plumbing is honest, but its quality payoff is asserted, not measured.
-- **Enormous, fast-moving surface.** 49 commands, 32 personas, 54 skills, broad lifecycle hooks, a smart router, freeze/discipline modes, a reaction engine, an OpenClaw/MCP bridge — plus 242 releases since mid-January (~5 months). That is a large install footprint with its own vocabulary and a high breaking-change cadence; overlapping entrypoints (embrace vs factory vs council vs debate vs auto) invite decision paralysis.
-- **Effectively single-author.** Despite the breadth, only ~15 contributors; this is one maintainer's rapidly-iterating vision. Bus-factor and half-baked-mode risk are real at this velocity.
-- **The "9 providers / consensus gate" framing can become expensive ceremony for small tasks.** For a one-line fix, fanning out to a council is pure overhead. The tool's own docs steer you to Claude-native `/init`/`/review`/`/security-review` first and Octopus only "for escalation" — an honest admission that most tasks don't need it.
+- **The headline value was not exercised.** No second provider and no credentials were available, so the 75% consensus gate, the council vote and cross-model review were never run against real model output. Whether cross-model disagreement catches defects a single strong reviewer misses remains unmeasured here and, as far as the repo's docs show, unmeasured upstream.
+- **Council hangs with Claude as the only provider.** `orchestrate.sh council` produced no result in 120 s or in a second 100 s attempt (after installing gawk) and was killed by `timeout`; the last line was the project-policy notice. The cause was not isolated: the dispatch may be waiting on the unauthenticated Claude route, so this is a Claude-only, no-credentials observation and not proof of a hang with a configured account.
+- **Two unit suites fail in this sandbox.** `test-agy-provider.sh` (a stalled catalog lookup returned in 1159 ms but left the process alive) and `test-bare-auth-probe-timeout.sh` (a grandchild process survived the probe's kill, and an interrupted probe returned 143 with the process still running). Both concern process-tree cleanup, which may be a property of this container; they are reported as observed failures, not diagnosed.
+- **Run time.** The unit tier covered 52 of 408 suites in about 13 minutes, so a full local pass is a multi-hour job in this environment.
+- **Packaging warnings.** `claude plugin validate` raised 42 warnings that hook commands use `${CLAUDE_PLUGIN_ROOT}` unquoted, which breaks if the install path has a space.
+- **`debate` needs a submodule.** `--dry-run debate` stops with "AI Debate Hub not found" and asks for `git submodule update --init --recursive`, so the command is not usable from a plain marketplace install in this form.
+- **Footprint.** 54 commands, 63 skills, 31 personas and a broad hook set, from what is effectively one maintainer's fast release cadence; the earlier review's maintenance and cost concerns stand.
 
 ## Quality signals affected
 
 | Signal | Impact | Evidence |
 |--------|--------|----------|
-| Correctness | + (potential) | Real independent multi-model dispatch + 75% consensus/critical-veto gates + adversarial/red-team council styles target blindspots a single model misses; unproven by benchmark but mechanically sound (no simulation faking) |
-| Speed | +/- | Parallel provider fan-out for research/review can be faster than serial human cross-checking; multi-model councils and four-phase lifecycle add latency and ceremony for small tasks |
-| Maintainability | + | Inline multi-LLM PR review, two-stage review, discipline gates, and persisted run artifacts/ledgers improve review rigor and traceability |
-| Safety | +/- | Dedicated security-auditor persona, `/octo:security` OWASP scans, adversarial review, transparent provider markers and clean uninstall are positives; offset by broad lifecycle-hook install and routing prompts/code to multiple external providers (data egress) |
-| Cost Efficiency | - | Running up to 9 models per task is a clear cost multiplier; mitigated (not eliminated) by OAuth reuse, free Ollama, `--max-cost`, cost preflight, depth/member caps |
+| Correctness | neutral (unmeasured) | Cross-model catch rate was not measurable without a second provider; the plumbing passes 16/16 smoke suites and 50 of 52 completed unit suites |
+| Speed | - | Council produced nothing in 100-120 s on the Claude-only path, and the full unit tier is a multi-hour run; provider detection itself is fast (5.9 s) |
+| Maintainability | +/- | Heavy hermetic test coverage, but 54 commands, 63 skills and 31 personas is a large surface with overlapping entry points |
+| Safety | +/- | Safety-hook smoke tests pass, but the plugin installs a broad hook set and routes prompts to external providers; 42 unquoted-path warnings |
+| Cost Efficiency | - | Design fans one task out to several paid providers; the cost controls (`--max-cost`, preflight) were read in the earlier review and not exercised here |
+| Verifiability | +/- | The agent-status ledger and test tiers make provider participation checkable in principle; none of it was observable here with one provider, and the consensus output is itself model-generated |
 
 ## Verdict
 
-**discovery-log — tentative read**
-
-Adopt when (1) you already have several model subscriptions (ChatGPT/Codex, Gemini, Copilot) so the marginal cost of fanning out is low, and (2) the work is genuinely high-stakes — architecture decisions, security-sensitive review, pre-merge validation, or research — where a single model's blindspot is expensive and cross-model disagreement is worth paying for. For that profile, octopus is the rare multi-model tool that implements the idea honestly: it dispatches real independent providers and enforces consensus/veto gates rather than role-playing personas inside one context, and it is a well-maintained native Claude Code plugin that lives in the Plan/Review stages this catalog rewards.
-
-It is not an unconditional ADOPT because the differentiating value is unproven by benchmark, gated behind multiple paid providers, and carries a large fast-moving install footprint from an essentially single maintainer — and for routine work it is expensive ceremony the tool itself tells you to skip in favor of Claude-native review.
-
-Differentiation from overlaps: **PR-Agent** does single-model PR review bound to git platforms; octopus's edge is *cross-model* adversarial review with consensus gating, plus full-lifecycle and research commands. It overlaps in spirit with **oh-my-claudecode** (also a heavy native CC orchestration plugin), but OMC is teams-of-Claude orchestration with cost-routing where octopus's thesis is specifically *multiple independent vendors checking each other*.
+**discovery-log — tentative read** — the package installs cleanly and passes its own smoke tier (16/16, 50 of 52 completed unit suites), but the cross-model consensus value that justifies it needs a second provider and credentials, and the Claude-only council path produced no result in the sandbox; a real read needs a machine with at least two configured providers and a planted-defect review comparison against a single-model baseline.
 
 ## Triage note
 

@@ -549,7 +549,7 @@ All 1116 tools from CATALOG.md with dev loop stage, automation capability, prici
 | Quant-Off/skills | skill | | ✓ | discovery-log | SOURCE-ONLY |
 | PR-Agent | tool | ✓ | ✓ | SKIP | REVIEW |
 | open-code-review | tool | ✓ | ✓ | discovery-log | SOURCE-ONLY |
-| claude-octopus | plugin | ✓ | ✓/$ | discovery-log | REVIEW |
+| claude-octopus | plugin | ✓ | ✓/$ | discovery-log | RUN |
 | crucible | plugin | ✓ | ✓ | discovery-log | SOURCE-ONLY |
 | tdd-guard | plugin | ✓ | ✓ | CONDITIONAL | RUN |
 | ratchet | tool | ✓ | ✓ | SKIP | SOURCE-ONLY |
